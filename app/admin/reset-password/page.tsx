@@ -5,8 +5,8 @@ import { getSupabase } from '@/lib/supabaseClient';
 import RequireAdmin from '@/components/RequireAdmin';
 import PasswordInput from '@/components/PasswordInput';
 
-type Profile = {
-  id: string;
+type ProfileRow = {
+  profile_id: string;            // from the view
   auth_user_id: string | null;   // Auth UID (from auth.users)
   name: string | null;
   email: string | null;
@@ -25,7 +25,7 @@ export default function ResetPasswordPage() {
 function InnerResetPassword() {
   const sb = getSupabase();
 
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [userId, setUserId] = useState('');     // selected AUTH UID
   const [newPass, setNewPass] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,13 +34,19 @@ function InnerResetPassword() {
   useEffect(() => {
     (async () => {
       setMsg(null);
+
+      // ✅ Read from the non-recursive view
       const { data, error } = await sb
-        .from('profiles')
-        .select('id, auth_user_id, name, email, department, role')
+        .from('profiles_with_email')
+        .select('profile_id, auth_user_id, name, email, department, role')
         .order('name', { ascending: true, nullsFirst: true });
 
-      if (error) setMsg({ type:'error', text: 'Failed to load users: ' + error.message });
-      else setProfiles((data ?? []) as Profile[]);
+      if (error) {
+        setMsg({ type:'error', text: 'Failed to load users: ' + error.message });
+        setProfiles([]);
+      } else {
+        setProfiles((data ?? []) as ProfileRow[]);
+      }
     })();
   }, [sb]);
 
@@ -81,7 +87,7 @@ function InnerResetPassword() {
   return (
     <main className="min-h-[70vh] flex items-center justify-center p-6">
       <form onSubmit={submit} className="w-full max-w-sm border p-6 rounded-2xl space-y-4 bg-white shadow">
-        <h1 className="text-xl font-semibold">Admin — Reset User Password</h1>
+        <h1 className="text-xl font-semibold">Reset User Password</h1>
 
         {/* User select */}
         <div className="space-y-1">
@@ -91,15 +97,15 @@ function InnerResetPassword() {
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
           >
-            <option value="">-- choose a user --</option>
+            <option value="">Select User</option>
             {profiles.map((p) => (
               <option
-                key={p.id}
+                key={p.profile_id}
                 value={p.auth_user_id ?? ''}
                 disabled={!p.auth_user_id}
                 title={!p.auth_user_id ? 'No auth_user_id linked to this profile' : undefined}
               >
-                {(p.name || p.email) ?? '(no name)'}
+                {(p.name || p.email || '(no name)')}
                 {p.role === 'admin' ? ' (admin)' : ''}
                 {' — '}
                 {p.department || 'N/A'}
