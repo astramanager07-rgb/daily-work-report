@@ -17,7 +17,7 @@ type Action = {
   href: string;
   label: string;
   desc: string;
-  primary?: boolean; // <-- fixes TS error when used in classNames
+  primary?: boolean;
 };
 
 export default function HomePage() {
@@ -58,6 +58,13 @@ export default function HomePage() {
     return isAdmin ? [...base.slice(0, 1), ...admin, base[1]] : base;
   }, [isAdmin]);
 
+  // Format today's date in dd-mm-yyyy
+  const todayLabel = new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date()).replace(/\//g, '-');
+
   return (
     <main>
       {/* Hero / Header */}
@@ -93,11 +100,11 @@ export default function HomePage() {
                 </p>
               </div>
 
-              {/* Today pill */}
+              {/* Today pill (styled) */}
               <div className="shrink-0">
-                <div className="inline-flex items-center rounded-xl border bg-white px-4 py-2 text-sm text-gray-700 shadow-sm">
-                  <span className="mr-2">📅</span>
-                  {new Date().toLocaleDateString()}
+                <div className="inline-flex items-center gap-2 rounded-full bg-indigo-600 text-white px-5 py-2 text-sm font-semibold shadow-md">
+                  <span>📅</span>
+                  {todayLabel}
                 </div>
               </div>
             </div>
@@ -133,22 +140,6 @@ export default function HomePage() {
               <p className="mt-2 text-sm text-gray-600">{a.desc}</p>
             </Link>
           ))}
-        </div>
-
-        {/* Helpful tips */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl border bg-white p-4 text-sm text-gray-700">
-            <div className="font-medium mb-1"></div>
-           
-          </div>
-          <div className="rounded-xl border bg-white p-4 text-sm text-gray-700">
-            <div className="font-medium mb-1"></div>
-             <span className="font-medium"></span> 
-          </div>
-          <div className="rounded-xl border bg-white p-4 text-sm text-gray-700">
-            <div className="font-medium mb-1"></div>
-            
-          </div>
         </div>
       </section>
     </main>
