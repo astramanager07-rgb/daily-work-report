@@ -58,13 +58,6 @@ export default function HomePage() {
     return isAdmin ? [...base.slice(0, 1), ...admin, base[1]] : base;
   }, [isAdmin]);
 
-  // Format today's date in dd-mm-yyyy
-  const todayLabel = new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date()).replace(/\//g, '-');
-
   return (
     <main>
       {/* Hero / Header */}
@@ -100,11 +93,14 @@ export default function HomePage() {
                 </p>
               </div>
 
-              {/* Today pill (styled) */}
+              {/* Premium Date Pill */}
               <div className="shrink-0">
-                <div className="inline-flex items-center gap-2 rounded-full bg-indigo-600 text-white px-5 py-2 text-sm font-semibold shadow-md">
-                  <span>📅</span>
-                  {todayLabel}
+                <div className="inline-flex items-center rounded-xl border bg-white px-5 py-2 text-sm font-semibold text-gray-800 shadow-sm">
+                  {new Date().toLocaleDateString('en-US', {
+                    month: 'short',  // Sept
+                    day: 'numeric',  // 28
+                    weekday: 'long', // Sunday
+                  })}
                 </div>
               </div>
             </div>

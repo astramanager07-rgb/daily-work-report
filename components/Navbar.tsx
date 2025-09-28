@@ -32,7 +32,6 @@ export default function Navbar() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // helper
   async function loadProfile() {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) {
@@ -50,43 +49,48 @@ export default function Navbar() {
   }
 
   useEffect(() => {
-    // initial load
     loadProfile();
-
-    // subscribe to auth changes (login, logout, token refresh, user updated)
     const { data: sub } = sb.auth.onAuthStateChange((_event, _session) => {
-      // Re-fetch profile on any auth change
       loadProfile();
-      // Ensure client components re-render as needed
       router.refresh();
     });
-
     return () => {
       sub.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router, sb]);
 
   async function logout() {
     await sb.auth.signOut();
-    setProfile(null);          // update UI immediately
-    router.replace('/login');  // navigate
-    router.refresh();          // ensure a re-render
+    setProfile(null);
+    router.replace('/login');
+    router.refresh();
   }
 
-  if (loading) return null; // avoid flicker
+  if (loading) return null;
 
   return (
     <header className="border-b bg-white/70 backdrop-blur sticky top-0 z-40">
       <div className="container mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
-        <div className="font-semibold text-gray-900">Daily Work Report</div>
+
+        {/* Premium DWR Logo (3D style text) */}
+        <Link href="/" className="flex items-center">
+          <span
+            className="text-2xl font-extrabold text-black tracking-wide 
+                       drop-shadow-[2px_2px_4px_rgba(0,0,0,0.25)] 
+                       hover:drop-shadow-[3px_3px_6px_rgba(0,0,0,0.35)] 
+                       transition-all select-none"
+          >
+            DWR
+          </span>
+        </Link>
+
         <nav className="flex items-center gap-1">
           <NavLink href="/" label="Home" active={pathname === '/'} />
 
-          {/* If logged in */}
           {profile ? (
             <>
               <NavLink href="/report" label="Report" active={pathname === '/report'} />
+              <NavLink href="/my-reports" label="My Reports" active={pathname === '/my-reports'} />
 
               {profile.role === 'admin' && (
                 <>
@@ -117,7 +121,6 @@ export default function Navbar() {
               </button>
             </>
           ) : (
-            // If NOT logged in
             <NavLink href="/login" label="Login" active={pathname === '/login'} />
           )}
         </nav>
