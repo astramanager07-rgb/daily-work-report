@@ -5,9 +5,9 @@ import { getSupabase } from '@/lib/supabaseClient';
 import RequireAdmin from '@/components/RequireAdmin';
 import PasswordInput from '@/components/PasswordInput';
 
-type ProfileRow = {
-  profile_id: string;            // from the view
-  auth_user_id: string | null;   // Auth UID (from auth.users)
+type Profile = {
+  id: string;
+  auth_user_id: string | null;
   name: string | null;
   email: string | null;
   department: string | null;
@@ -25,7 +25,7 @@ export default function ResetPasswordPage() {
 function InnerResetPassword() {
   const sb = getSupabase();
 
-  const [profiles, setProfiles] = useState<ProfileRow[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [userId, setUserId] = useState('');     // selected AUTH UID
   const [newPass, setNewPass] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,18 +34,16 @@ function InnerResetPassword() {
   useEffect(() => {
     (async () => {
       setMsg(null);
-
-      // ✅ Read from the non-recursive view
+      // ✅ Read directly from 'profiles', NOT from 'profiles_with_email'
       const { data, error } = await sb
-        .from('profiles_with_email')
-        .select('profile_id, auth_user_id, name, email, department, role')
+        .from('profiles')
+        .select('id, auth_user_id, name, email, department, role')
         .order('name', { ascending: true, nullsFirst: true });
 
       if (error) {
         setMsg({ type:'error', text: 'Failed to load users: ' + error.message });
-        setProfiles([]);
       } else {
-        setProfiles((data ?? []) as ProfileRow[]);
+        setProfiles((data ?? []) as Profile[]);
       }
     })();
   }, [sb]);
@@ -100,16 +98,15 @@ function InnerResetPassword() {
             <option value="">Select User</option>
             {profiles.map((p) => (
               <option
-                key={p.profile_id}
+                key={p.id}
                 value={p.auth_user_id ?? ''}
                 disabled={!p.auth_user_id}
                 title={!p.auth_user_id ? 'No auth_user_id linked to this profile' : undefined}
               >
-                {(p.name || p.email || '(no name)')}
+                {(p.name || p.email) ?? '(no name)'}
                 {p.role === 'admin' ? ' (admin)' : ''}
-                {' — '}
-                {p.department || 'N/A'}
-                {!p.auth_user_id ? ' (no auth link)' : ''}
+                {p.department ? ` — ${p.department}` : ''}
+                {!p.auth_user_id ? ' — (no auth link)' : ''}
               </option>
             ))}
           </select>

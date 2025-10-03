@@ -1,76 +1,148 @@
 // app/api/admin/users/route.ts
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { getServerUser } from '@/lib/getServerUser';
+import { createClient, type User } from '@supabase/supabase-js';
 
-function assertAdmin(role: string | null | undefined) {
-  if (role !== 'admin') throw new Error('Admin only');
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const admin = createClient(url, service, { auth: { persistSession: false } });
+
+/** Find an auth user by email for older SDKs (no getUserByEmail) */
+async function findUserByEmail(email: string): Promise<User | null> {
+  const target = email.toLowerCase();
+  let page = 1;
+  const perPage = 200;
+  for (;;) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    const hit = users.find((u) => (u.email || '').toLowerCase() === target);
+    if (hit) return hit;
+    if (users.length < perPage) return null;
+    page += 1;
+  }
 }
 
+/* ----------------------------- GET: list users ----------------------------- */
 export async function GET() {
-  const { supabase, user } = await getServerUser();
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  try {
+    const { data, error } = await admin
+      .from('profiles')
+      .select(
+        [
+          'id',
+          'auth_user_id',
+          'email',
+          'name',
+          'employee_id',
+          'designation',
+          'department',
+          'role',
+          'active',
+          'created_at',
+        ].join(', ')
+      )
+      .order('name', { ascending: true, nullsFirst: true });
 
-  const { data: me, error: meErr } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('auth_user_id', user.id)
-    .single();
-  if (meErr) return NextResponse.json({ error: meErr.message }, { status: 400 });
-  try { assertAdmin(me?.role); } catch (e:any) { return NextResponse.json({ error: e.message }, { status: 403 }); }
-
-  // list profiles (active + inactive)
-  const { data, error } = await supabaseAdmin
-    .from('profiles')
-    .select('id, auth_user_id, email, name, department, designation, role, employee_id, is_active')
-    .order('name', { ascending: true, nullsFirst: true });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ users: data ?? [] });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ users: data ?? [] });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || 'Unexpected error' },
+      { status: 500 }
+    );
+  }
 }
 
+/* ----------------------------- POST: create user ----------------------------- */
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { email, password, name, employee_id, department, designation, role = 'staff' } = body || {};
-  if (!email || !password) {
-    return NextResponse.json({ error: 'email and password required' }, { status: 400 });
+  try {
+    const body = (await req.json()) as {
+      email: string;
+      password: string;
+      name?: string;
+      employee_id?: string | null;
+      designation?: string | null;
+      department?: string | null;
+      role?: 'admin' | 'staff';
+      active?: boolean;
+    };
+
+    const {
+      email,
+      password,
+      name,
+      employee_id,
+      designation,
+      department,
+      role = 'staff',
+      active = true,
+    } = body;
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      );
+    }
+
+    // Create auth user; if already exists, look it up
+    const { data: created, error: createErr } =
+      await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name, department },
+        app_metadata: { role },
+      });
+
+    let user = created?.user ?? null;
+    if (createErr) {
+      const already =
+        createErr.message?.toLowerCase().includes('already registered') ||
+        createErr.status === 422;
+      if (!already) {
+        return NextResponse.json({ error: createErr.message }, { status: 400 });
+      }
+      user = await findUserByEmail(email);
+      if (!user) {
+        return NextResponse.json(
+          { error: 'User exists but could not be fetched' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Upsert profile by auth_user_id to avoid duplicate key error
+    const { error: upsertErr } = await admin
+      .from('profiles')
+      .upsert(
+        [
+          {
+            auth_user_id: user!.id,
+            email,
+            name: name ?? (user!.user_metadata?.name as string | null) ?? null,
+            employee_id: employee_id ?? null,
+            designation: designation ?? null,
+            department: department ?? null,
+            role: role === 'admin' ? 'admin' : 'staff',
+            active: !!active,
+          },
+        ],
+        { onConflict: 'auth_user_id' }
+      );
+
+    if (upsertErr) {
+      return NextResponse.json({ error: upsertErr.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true, userId: user!.id });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || 'Unexpected error' },
+      { status: 500 }
+    );
   }
-
-  const { supabase, user } = await getServerUser();
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  const { data: me, error: meErr } = await supabase
-    .from('profiles').select('role').eq('auth_user_id', user.id).single();
-  if (meErr) return NextResponse.json({ error: meErr.message }, { status: 400 });
-  try { assertAdmin(me?.role); } catch (e:any) { return NextResponse.json({ error: e.message }, { status: 403 }); }
-
-  // 1) create auth user
-  const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: {},
-  });
-  if (createErr || !created?.user) {
-    return NextResponse.json({ error: createErr?.message || 'Failed to create auth user' }, { status: 400 });
-  }
-  const authId = created.user.id;
-
-  // 2) insert profile
-  const { error: insErr } = await supabaseAdmin.from('profiles').insert({
-    auth_user_id: authId,
-    email,
-    name: name ?? null,
-    employee_id: employee_id ?? null,
-    department: department ?? null,
-    designation: designation ?? null,
-    role,
-    is_active: true,
-  });
-  if (insErr) {
-    // rollback auth user if profile insert fails
-    await supabaseAdmin.auth.admin.deleteUser(authId);
-    return NextResponse.json({ error: insErr.message }, { status: 400 });
-  }
-
-  return NextResponse.json({ ok: true });
 }

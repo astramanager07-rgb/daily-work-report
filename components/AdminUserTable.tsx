@@ -47,6 +47,17 @@ function Badge({ children, tone='gray' }: { children: any; tone?: 'gray'|'green'
   );
 }
 
+/* ========== Helper: Safe JSON parser ========== */
+async function safeJson(res: Response) {
+  try {
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default function AdminUserTable() {
   const sb = getSupabase();
   const [rows, setRows] = useState<Profile[]>([]);
@@ -81,14 +92,25 @@ export default function AdminUserTable() {
     });
   }
 
+  /* ========== Load Users ========== */
   async function load() {
     setLoading(true);
     setMsg('');
-    const res = await fetch('/api/admin/users', { cache: 'no-store' });
-    const j = await res.json();
-    if (!res.ok) setMsg(j.error || 'Failed to load users');
-    else setRows(j.users as Profile[]);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/admin/users', { cache: 'no-store' });
+      const j = await safeJson(res);
+      if (!res.ok) {
+        setMsg((j && j.error) || `Failed to load users (HTTP ${res.status})`);
+        setRows([]);
+      } else {
+        setRows((j?.users || []) as Profile[]);
+      }
+    } catch (e: any) {
+      setMsg(e?.message || 'Failed to load users');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -119,6 +141,7 @@ export default function AdminUserTable() {
     setOpen(true);
   }
 
+  /* ========== Save User (Create / Update) ========== */
   async function save() {
     setMsg('');
     if (editing) {
@@ -137,8 +160,8 @@ export default function AdminUserTable() {
           newPassword: form.password ? form.password : undefined,
         }),
       });
-      const j = await res.json();
-      if (!res.ok) return setMsg(j.error || 'Update failed');
+      const j = await safeJson(res);
+      if (!res.ok) return setMsg((j && j.error) || 'Update failed');
     } else {
       // CREATE
       if (!form.email || !form.password) {
@@ -157,8 +180,8 @@ export default function AdminUserTable() {
           role: form.role || 'staff',
         }),
       });
-      const j = await res.json();
-      if (!res.ok) return setMsg(j.error || 'Create failed');
+      const j = await safeJson(res);
+      if (!res.ok) return setMsg((j && j.error) || 'Create failed');
     }
     setOpen(false);
     await load();
